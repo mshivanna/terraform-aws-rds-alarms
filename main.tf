@@ -306,3 +306,41 @@ resource "aws_cloudwatch_metric_alarm" "innodb_buffer_pool_hits" {
   alarm_actions = var.actions_alarm
   ok_actions    = var.actions_ok
 }
+
+resource "aws_cloudwatch_metric_alarm" "slow_queries_too_high" {
+  count               = var.create_slow_queries_alarm ? 1 : 0
+  alarm_name          = "${var.prefix}rds-${var.db_instance_id}-slow-queries-too-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 60
+  metric_name         = "SlowQueries"
+  namespace           = "AWS/RDS"
+  period              = var.statistic_period
+  statistic           = "Average"
+  threshold           = var.slow_queries_too_high_threshold
+  alarm_description   = "Average SlowQuery Count over last ${(var.evaluation_period * var.statistic_period / 60)} minutes too high, performance may suffer"
+  alarm_actions       = var.actions_alarm
+  ok_actions          = var.actions_ok
+
+  dimensions = {
+    DBInstanceIdentifier = var.db_instance_id
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "dead_locks_too_high" {
+  count               = var.create_dead_locks_alarm ? 1 : 0
+  alarm_name          = "${var.prefix}rds-${var.db_instance_id}-dead-locks-too-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 60
+  metric_name         = "InnoDBDeadlocks"
+  namespace           = "AWS/RDS"
+  period              = var.statistic_period
+  statistic           = "Average"
+  threshold           = var.dead_locks_too_high_threshold
+  alarm_description   = "Average Deadlock Count over last ${(var.evaluation_period * var.statistic_period / 60)} minutes too high, performance may suffer"
+  alarm_actions       = var.actions_alarm
+  ok_actions          = var.actions_ok
+
+  dimensions = {
+    DBInstanceIdentifier = var.db_instance_id
+  }
+}
