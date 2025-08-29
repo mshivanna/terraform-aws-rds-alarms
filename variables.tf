@@ -99,6 +99,18 @@ variable "create_innodb_row_lock_time_alarm" {
   description = "Whether or not to create the innodb_row_lock_time too high alarm. Default is to create it."
 }
 
+variable "create_slow_queries_alarm" {
+  type        = bool
+  default     = true
+  description = "Whether or not to create the slow_queries too high alarm. Default is to create it."
+}
+
+variable "create_dead_locks_alarm" {
+  type        = bool
+  default     = true
+  description = "Whether or not to create the dead_locks too high alarm. Default is to create it."
+}
+
 variable "create_innodb_buffer_pool_hits_alarm" {
   type        = bool
   default     = true
@@ -221,5 +233,17 @@ variable "innodb_row_lock_time_too_high_threshold" {
 variable "innodb_buffer_pool_hits_too_high_threshold" {
   type        = string
   default     = "10000"
-  description = "Alarm threshold for the 'innodb_row_lock_time' alarm"
+  description = "Alarm threshold for the 'innodb_buffer_pool_hits' alarm"
+}
+
+variable "slow_queries_too_high_threshold" {
+  type        = string
+  default     = "0.1"
+  description = "Alarm threshold for the 'slow_queries' alarm"
+}
+
+variable "dead_locks_too_high_threshold" {
+  type        = string
+  default     = "2"
+  description = "Alarm threshold for the 'dead locks' alarm"
 }
