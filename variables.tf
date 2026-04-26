@@ -247,3 +247,15 @@ variable "dead_locks_too_high_threshold" {
   default     = "2"
   description = "Alarm threshold for the 'dead locks' alarm"
 }
+
+variable "enable_repeat_alarm" {
+  type        = bool
+  default     = false
+  description = "Create a Lambda that re-notifies via SNS every repeat_alarm_interval_minutes while an alarm remains in ALARM state."
+}
+
+variable "repeat_alarm_interval_minutes" {
+  type        = number
+  default     = 30
+  description = "How often (in minutes) to re-send notifications for unresolved alarms. Only used when enable_repeat_alarm is true."
+}

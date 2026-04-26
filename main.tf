@@ -3,7 +3,15 @@ terraform {
     aws = {
       source = "hashicorp/aws"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = ">= 2.0"
+    }
   }
+}
+
+locals {
+  repeat_alarm_schedule = var.repeat_alarm_interval_minutes == 1 ? "rate(1 minute)" : "rate(${var.repeat_alarm_interval_minutes} minutes)"
 }
 
 // CPU Utilization
@@ -343,4 +351,116 @@ resource "aws_cloudwatch_metric_alarm" "dead_locks_too_high" {
   dimensions = {
     DBInstanceIdentifier = var.db_instance_id
   }
+}
+
+# Repeat alarm notification resources — only created when enable_repeat_alarm = true
+data "archive_file" "repeat_alarm_lambda" {
+  count       = var.enable_repeat_alarm ? 1 : 0
+  type        = "zip"
+  source_file = "${path.module}/lambda/rds_alarm_repeat.py"
+  output_path = "${path.module}/lambda/rds_alarm_repeat.zip"
+}
+
+resource "aws_cloudwatch_log_group" "repeat_alarm_lambda" {
+  count             = var.enable_repeat_alarm ? 1 : 0
+  name              = "/aws/lambda/rds-alarm-repeat-${var.db_instance_id}"
+  retention_in_days = 7
+  tags              = var.tags
+}
+
+resource "aws_iam_role" "repeat_alarm_lambda" {
+  count = var.enable_repeat_alarm ? 1 : 0
+  name  = "rds-alarm-repeat-${var.db_instance_id}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "repeat_alarm_lambda" {
+  count = var.enable_repeat_alarm ? 1 : 0
+  name  = "rds-alarm-repeat-${var.db_instance_id}"
+  role  = aws_iam_role.repeat_alarm_lambda[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["cloudwatch:DescribeAlarms"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = var.actions_alarm[0]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+        ]
+        Resource = "${aws_cloudwatch_log_group.repeat_alarm_lambda[0].arn}:*"
+      },
+    ]
+  })
+}
+
+resource "aws_lambda_function" "repeat_alarm" {
+  count            = var.enable_repeat_alarm ? 1 : 0
+  filename         = data.archive_file.repeat_alarm_lambda[0].output_path
+  function_name    = "rds-alarm-repeat-${var.db_instance_id}"
+  role             = aws_iam_role.repeat_alarm_lambda[0].arn
+  handler          = "rds_alarm_repeat.lambda_handler"
+  runtime          = "python3.12"
+  source_code_hash = data.archive_file.repeat_alarm_lambda[0].output_base64sha256
+  timeout          = 30
+
+  environment {
+    variables = {
+      SNS_TOPIC_ARN = var.actions_alarm[0]
+      ALARM_PREFIX  = "${var.prefix}rds-${var.db_instance_id}"
+    }
+  }
+
+  logging_config {
+    log_format = "Text"
+  }
+
+  depends_on = [aws_cloudwatch_log_group.repeat_alarm_lambda]
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_rule" "repeat_alarm" {
+  count               = var.enable_repeat_alarm ? 1 : 0
+  name                = "rds-alarm-repeat-${var.db_instance_id}"
+  schedule_expression = local.repeat_alarm_schedule
+  description         = "Re-notify Slack for RDS ${var.db_instance_id} alarms still in ALARM state"
+  tags                = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "repeat_alarm" {
+  count     = var.enable_repeat_alarm ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.repeat_alarm[0].name
+  target_id = "rds-alarm-repeat-${var.db_instance_id}-lambda"
+  arn       = aws_lambda_function.repeat_alarm[0].arn
+}
+
+resource "aws_lambda_permission" "repeat_alarm_eventbridge" {
+  count         = var.enable_repeat_alarm ? 1 : 0
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.repeat_alarm[0].function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.repeat_alarm[0].arn
 }
