@@ -1,15 +1,3 @@
-terraform {
-  required_providers {
-    aws = {
-      source = "hashicorp/aws"
-    }
-    archive = {
-      source  = "hashicorp/archive"
-      version = ">= 2.0"
-    }
-  }
-}
-
 locals {
   repeat_alarm_schedule = var.repeat_alarm_interval_minutes == 1 ? "rate(1 minute)" : "rate(${var.repeat_alarm_interval_minutes} minutes)"
 }
